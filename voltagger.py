@@ -38,7 +38,8 @@ for idx, vol in enumerate(VOLS):
         if vol_instance.tags:
             for tag in vol_instance.tags:
                 if tag['Key'] == 'Name':
-                    print('Tagging: {0}'.format(vol_instance.instance_id))
+                    print('Tagging: {0} ({1}) \t Attached to: {2}'.format(
+                        tag['Value'], vol.volume_id, vol_instance.instance_id))
                     vol.create_tags(Tags=[tag])
         else:
             INSTANCES_UNTAGGED.append(vol_instance.instance_id)
