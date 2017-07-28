@@ -1,0 +1,116 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: voltagger stack (role, policy, lambda)
+Parameters:
+  StackName:
+    Description: Specify the Stack name
+    Type: String
+    Default: voltagger-stack
+Resources:
+  EC2EventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Trigger a Lambda function every 30 minutes
+      Name: voltagger-cf-rule
+      ScheduleExpression: rate(30 minutes)
+      State: ENABLED
+      Targets:
+      - Arn:
+          Ref: VoltaggerLambdaAlias
+        Id: Production
+  VoltaggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          import boto3
+          import sys
+          def lambda_handler(event, context):
+              EC2 = boto3.Session(region_name='us-east-1').resource('ec2')
+              # Fetch the untagged volumes
+              print('Fetching untagged Volumes')
+              VOLS = [vol for vol in EC2.volumes.all() if vol.tags is None]
+              print('{0} untagged volumes found'.format(len(VOLS)))
+              VOLUMES_UNATTACHED = []
+              INSTANCES_UNTAGGED = []
+              # If the volumes are attached, assign the Name tag of the first instance
+              #  they are attached to.
+              for idx, vol in enumerate(VOLS):
+                  if vol.attachments:
+                      vol_instance = EC2.Instance(vol.attachments[0]['InstanceId'])
+                      if vol_instance.tags:
+                          for tag in vol_instance.tags:
+                              if tag['Key'] == 'Name':
+                                  print('Tagging: {0} ({1}) \t Attached to: {2}'.format(
+                                      tag['Value'], vol.volume_id, vol_instance.instance_id))
+                                  vol.create_tags(Tags=[tag])
+                      else:
+                          INSTANCES_UNTAGGED.append(vol_instance.instance_id)
+                  else:
+                      VOLUMES_UNATTACHED.append(vol.volume_id)
+              if INSTANCES_UNTAGGED:
+                  print('The following list of instance id\'s are untagged:')
+                  print(INSTANCES_UNTAGGED)
+              if VOLUMES_UNATTACHED:
+                  print('The following list of volume id\'s are unattached:')
+                  print(VOLUMES_UNATTACHED)
+      Description: This function tags EC2 Resources in a Scheduled Event.
+      Handler: index.lambda_handler
+      Role:
+        Fn::GetAtt: [VoltaggerRole, Arn]
+      Runtime: python3.6
+      Timeout: '60'
+  StableVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName:
+        Ref: VoltaggerLambda
+      Description: Stable version
+  VoltaggerLambdaAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName:
+        Ref: VoltaggerLambda
+      FunctionVersion:
+        Fn::GetAtt:
+        - StableVersion
+        - Version
+      Name: PROD
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: VoltaggerLambdaAlias
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn:
+        Fn::GetAtt:
+        - EC2EventRule
+        - Arn
+  VoltaggerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+      - PolicyName: voltagger-cf-lambda-role
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: voltaggerlambdarole
+            Effect: Allow
+            Action:
+            - ec2:CreateTags
+            - ec2:DescribeInstances
+            - ec2:DescribeTags
+            - ec2:DescribeVolumes
+            Resource:
+            - "arn:aws:ec2:::*"
+Outputs: {}
