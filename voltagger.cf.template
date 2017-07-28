@@ -112,7 +112,7 @@ Resources:
             - ec2:DescribeTags
             - ec2:DescribeVolumes
             Resource:
-            - arn:aws:ec2:::*
+            - "*"
           - Sid: voltaggerlambdarolelogging
             Effect: Allow
             Action:
@@ -120,5 +120,5 @@ Resources:
             - logs:CreateLogStream
             - logs:PutLogEvents
             Resource:
-            - arn:aws:log:::*
+            - "*"
 Outputs: {}
