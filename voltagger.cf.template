@@ -59,7 +59,7 @@ Resources:
       Role:
         Fn::GetAtt: [VoltaggerRole, Arn]
       Runtime: python3.6
-      Timeout: '60'
+      Timeout: '300'
   StableVersion:
     Type: AWS::Lambda::Version
     Properties:
@@ -112,5 +112,13 @@ Resources:
             - ec2:DescribeTags
             - ec2:DescribeVolumes
             Resource:
-            - "arn:aws:ec2:::*"
+            - arn:aws:ec2:::*
+          - Sid: voltaggerlambdarolelogging
+            Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource:
+            - arn:aws:log:::*
 Outputs: {}
