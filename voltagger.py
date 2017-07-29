@@ -21,33 +21,36 @@ try:
 except botocore.exceptions.ProfileNotFound:
     print('AWS Profile not found')
     sys.exit(1)
+CLIENT = boto3.client('ec2')
+REGIONS = [region['RegionName'] for region in CLIENT.describe_regions()['Regions']]
+for region in REGIONS:
+    print('Region: {0}'.format(region))
+    EC2 = boto3.resource('ec2',region)
 
-EC2 = boto3.resource('ec2')
-
-# Fetch the untagged volumes
-print('Fetching untagged Volumes')
-VOLS = [vol for vol in EC2.volumes.all() if vol.tags is None]
-print('{0} untagged volumes found'.format(len(VOLS)))
-VOLUMES_UNATTACHED = []
-INSTANCES_UNTAGGED = []
-# If the volumes are attached, assign the Name tag of the first instance
-#  they are attached to.
-for idx, vol in enumerate(VOLS):
-    if vol.attachments:
-        vol_instance = EC2.Instance(vol.attachments[0]['InstanceId'])
-        if vol_instance.tags:
-            for tag in vol_instance.tags:
-                if tag['Key'] == 'Name':
-                    print('Tagging: {0} ({1}) \t Attached to: {2}'.format(
-                        tag['Value'], vol.volume_id, vol_instance.instance_id))
-                    vol.create_tags(Tags=[tag])
+    # Fetch the untagged volumes
+    print('Fetching untagged Volumes')
+    VOLS = [vol for vol in EC2.volumes.all() if vol.tags is None]
+    print('{0} untagged volumes found'.format(len(VOLS)))
+    VOLUMES_UNATTACHED = []
+    INSTANCES_UNTAGGED = []
+    # If the volumes are attached, assign the Name tag of the first instance
+    #  they are attached to.
+    for idx, vol in enumerate(VOLS):
+        if vol.attachments:
+            vol_instance = EC2.Instance(vol.attachments[0]['InstanceId'])
+            if vol_instance.tags:
+                for tag in vol_instance.tags:
+                    if tag['Key'] == 'Name':
+                        print('Tagging: {0} ({1}) \t Attached to: {2}'.format(
+                            tag['Value'], vol.volume_id, vol_instance.instance_id))
+                        vol.create_tags(Tags=[tag])
+            else:
+                INSTANCES_UNTAGGED.append(vol_instance.instance_id)
         else:
-            INSTANCES_UNTAGGED.append(vol_instance.instance_id)
-    else:
-        VOLUMES_UNATTACHED.append(vol.volume_id)
-if INSTANCES_UNTAGGED:
-    print('The following list of instance id\'s are untagged:')
-    print(INSTANCES_UNTAGGED)
-if VOLUMES_UNATTACHED:
-    print('The following list of volume id\'s are unattached:')
-    print(VOLUMES_UNATTACHED)
+            VOLUMES_UNATTACHED.append(vol.volume_id)
+    if INSTANCES_UNTAGGED:
+        print('The following list of instance id\'s are untagged:')
+        print(INSTANCES_UNTAGGED)
+    if VOLUMES_UNATTACHED:
+        print('The following list of volume id\'s are unattached:')
+        print(VOLUMES_UNATTACHED)
