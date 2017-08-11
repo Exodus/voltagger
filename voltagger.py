@@ -44,6 +44,11 @@ for region in REGIONS:
                         print('Tagging: {0} ({1}) \t Attached to: {2}'.format(
                             tag['Value'], vol.volume_id, vol_instance.instance_id))
                         vol.create_tags(Tags=[tag])
+                        # Tagging Snapshots as well
+                        snapshots = [snap for snap in vol.snapshots.all()]
+                        for snap in snapshots:
+                            print('Tagging Snapshot: {0}'.format(snap.snapshot_id))
+                            snap.create_tags(Tag=[tag])
             else:
                 INSTANCES_UNTAGGED.append(vol_instance.instance_id)
         else:
@@ -54,3 +59,35 @@ for region in REGIONS:
     if VOLUMES_UNATTACHED:
         print('The following list of volume id\'s are unattached:')
         print(VOLUMES_UNATTACHED)
+
+    # To not make huge nested list comprehensions I'm dividing them into several
+    # Now tagging the snapshots. Get all the instances with a 'Name' tag.
+    snapvols = []
+    VOLUMES_NOTEXIST = []
+    owner_id = boto3.client('sts').get_caller_identity().get('Account')
+    sfilter = [{'Name': 'owner-id', 'Values': [owner_id]}]
+    snapshots = [snap for snap in EC2.snapshots.filter(Filters=sfilter).all()]
+    for idx, snap in enumerate(snapshots):
+        try:
+            print('Index: {0}/{1}\r'.format(idx, len(snapshots)), end='')
+            vol_instance = EC2.Instance(snap.volume.attachments[0]['InstanceId']) if any(snap.volume.attachments) else None
+            if vol_instance:
+                if vol_instance.tags:
+                    for tag in vol_instance.tags:
+                        if tag['Key'] == 'Name':
+                            if snap.tags:
+                                keys = []
+                                for tag in snap.tags:
+                                    keys.append(tag['Key'])
+                                if 'Name' not in keys:
+                                    print('Tagging Snapshot: {0} ({1}) \t Attached to: {2}'.format(
+                                        tag['Value'], snap.snapshot_id, vol_instance.instance_id))
+                                    snap.create_tags(Tags=[tag])
+                            else:
+                                print('Tagging Snapshot: {0} ({1}) \t Attached to: {2}'.format(
+                                    tag['Value'], snap.snapshot_id, vol_instance.instance_id))
+                                snap.create_tags(Tags=[tag])
+
+        except botocore.exceptions.ClientError as e:
+            if 'InvalidVolume.NotFound' in e.response['Error']['Code']:
+                VOLUMES_NOTEXIST.append(snap.volume_id)
